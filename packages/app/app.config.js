@@ -113,7 +113,7 @@ export default {
     name: variant.name,
     slug: developmentOverrides.slug ?? "voice-mobile",
     version: nativeReleaseVersion.appVersion,
-    orientation: "portrait",
+    orientation: "default",
     icon: variant.icon,
     scheme: "paseo",
     userInterfaceStyle: "automatic",
@@ -173,7 +173,10 @@ export default {
       ],
       ...buildProfile.notificationPlugins,
       "expo-audio",
-      ["expo-font", { fonts: ["./assets/fonts/SymbolsNerdFontMono-Regular.ttf"] }],
+      [
+        "expo-font",
+        { fonts: [path.resolve(__dirname, "assets/fonts/SymbolsNerdFontMono-Regular.ttf")] },
+      ],
       [
         "expo-gradle-jvmargs",
         {
