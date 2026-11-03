@@ -1,10 +1,12 @@
 import { ACPProviderOptionsSchema } from "./acp-options.js";
 import { type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
+import { setImmediate } from "node:timers/promises";
 
 import { terminateWithTreeKill } from "../../../utils/tree-kill.js";
 import type { ProcessTerminator } from "../../../utils/tree-kill.js";
@@ -120,6 +122,7 @@ import {
 } from "../provider-launch-config.js";
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "./provider-runner.js";
+import { resolveResumeProcessCwd } from "./resume-process-cwd.js";
 import {
   buildStringCommandShellInvocation,
   createStringCommandShellEnvOverlay,
@@ -165,16 +168,14 @@ function rejectOnProcessFailure(child: ChildProcess, stderrChunks: string[]): Pr
   });
 }
 
-async function isDirectory(target: string): Promise<boolean> {
-  try {
-    return (await fs.stat(target)).isDirectory();
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") {
-      return false;
-    }
-    throw error;
+function describeACPDisconnect(child: ChildProcess | null): string {
+  if (child?.signalCode) {
+    return `ACP agent disconnected (signal ${child.signalCode})`;
   }
+  if (child?.exitCode != null) {
+    return `ACP agent disconnected (exit code ${child.exitCode})`;
+  }
+  return "ACP agent disconnected";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -334,8 +335,17 @@ const ACP_PROBE_CLOSE_TIMEOUT_MS = 2_000;
 // request when the provider never answers, so these calls must be bounded
 // or the provider process is never terminated.
 const ACP_CLOSE_REQUEST_TIMEOUT_MS = 2_000;
+const ACP_DISCONNECT_EXIT_GRACE_MS = 1_000;
 const ACP_IMPORT_HISTORY_LOAD_TIMEOUT_MS = 30_000;
 const ACP_IMPORT_HISTORY_BUDGET_MS = 60_000;
+
+/**
+ * An ACP agent publishes its slash-command inventory incrementally. Wait this
+ * long without another batch before treating the inventory as complete. MiniMax
+ * publishes its skills about 350ms after its built-in commands.
+ */
+const COMMAND_INVENTORY_QUIET_MS = 600;
+const COMMAND_INVENTORY_POLL_MS = 25;
 
 function summarizeMalformedACPStdoutError(error: unknown): { type: string; message: string } {
   return {
@@ -646,6 +656,7 @@ interface PendingPermission {
   resolve: (response: RequestPermissionResponse) => void;
   reject: (error: Error) => void;
   turnId: string | null;
+  toolCallId: string;
 }
 
 interface PendingUserMessage {
@@ -1765,7 +1776,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private lastActivityAt: string | null = null;
   private configOptions: SessionConfigOption[] = [];
   private cachedCommands: AgentSlashCommand[] = [];
-  private commandsReadyDeferred: { promise: Promise<void>; resolve: () => void } | null = null;
+  /** When the last command batch arrived; null while nothing has been published. */
+  private commandsUpdatedAt: number | null = null;
   private commandsReadySettled = false;
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
@@ -1979,6 +1991,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (!this.connection || !this.sessionId) {
       throw new Error(`${this.provider} session is not initialized`);
     }
+    if (this.connection.signal.aborted) {
+      throw new Error(describeACPDisconnect(this.child));
+    }
     if (this.activeForegroundTurnId) {
       throw new Error("A foreground turn is already active");
     }
@@ -1993,7 +2008,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
 
-    void this.connection
+    const connection = this.connection;
+    const child = this.child;
+    const failOnDisconnect = () => void this.failDisconnectedTurn(turnId, child);
+    connection.signal.addEventListener("abort", failOnDisconnect, { once: true });
+    void connection
       .prompt({
         sessionId: this.sessionId,
         messageId,
@@ -2013,9 +2032,33 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           diagnostic: this.collectDiagnostic(summary.diagnostic ?? summary.message),
           turnId,
         });
-      });
+      })
+      .finally(() => connection.signal.removeEventListener("abort", failOnDisconnect));
 
     return { turnId };
+  }
+
+  // The SDK aborts the connection without rejecting the pending prompt, and before the child's
+  // exit event, so wait for the exit status before failing the turn.
+  private async failDisconnectedTurn(turnId: string, child: ChildProcess | null): Promise<void> {
+    await setImmediate();
+    if (child && child.exitCode === null && child.signalCode === null) {
+      await once(child, "exit", {
+        signal: AbortSignal.timeout(ACP_DISCONNECT_EXIT_GRACE_MS),
+      }).catch(() => undefined);
+    }
+    if (this.closed || this.activeForegroundTurnId !== turnId) {
+      return;
+    }
+    this.synthesizeCanceledToolCalls();
+    const error = describeACPDisconnect(child);
+    this.finishTurn({
+      type: "turn_failed",
+      provider: this.provider,
+      error,
+      diagnostic: this.collectDiagnostic(error),
+      turnId,
+    });
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {
@@ -2063,58 +2106,39 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     ];
   }
 
-  private ensureCommandsReadyDeferred(): void {
-    if (this.commandsReadyDeferred || this.commandsReadySettled || this.cachedCommands.length > 0) {
-      return;
-    }
-
-    let resolve!: () => void;
-    const promise = new Promise<void>((r) => {
-      resolve = r;
-    });
-    this.commandsReadyDeferred = { promise, resolve };
-  }
-
   private settleCommandsReady(): void {
-    if (this.commandsReadySettled) {
-      return;
-    }
     this.commandsReadySettled = true;
-    this.commandsReadyDeferred?.resolve();
-    this.commandsReadyDeferred = null;
   }
 
-  private async waitForCommandsReady(): Promise<void> {
-    const deferred = this.commandsReadyDeferred;
-    if (!deferred) {
-      return;
-    }
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    try {
-      await Promise.race([
-        deferred.promise,
-        new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, this.initialCommandsWaitTimeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timer) {
-        clearTimeout(timer);
-      }
+  /**
+   * Providers publish their command inventory incrementally. MiniMax sends its
+   * built-in commands twice, then a third batch about 350ms later that merges in
+   * every discovered skill. Returning after the first batch loses the skills.
+   *
+   * Wait for the inventory to go quiet rather than for the first batch. The
+   * quiet window must exceed the gap between a provider's own batches; 600ms
+   * covers MiniMax with margin. `initialCommandsWaitTimeoutMs` still bounds the
+   * whole wait for providers that publish once or never publish at all.
+   */
+  private async waitForCommandsToSettle(): Promise<void> {
+    const deadline = Date.now() + this.initialCommandsWaitTimeoutMs;
+    while (!this.commandsReadySettled && !this.closed) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return;
+      const quietFor = this.commandsUpdatedAt === null ? 0 : Date.now() - this.commandsUpdatedAt;
+      if (quietFor >= COMMAND_INVENTORY_QUIET_MS) return;
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(remaining, COMMAND_INVENTORY_POLL_MS)),
+      );
     }
   }
 
   async listCommands(): Promise<AgentSlashCommand[]> {
-    if (this.cachedCommands.length > 0) {
-      return this.cachedCommands;
-    }
-    if (!this.waitForInitialCommands || this.closed) {
+    if (this.commandsReadySettled || this.closed || !this.waitForInitialCommands) {
       return this.cachedCommands;
     }
 
-    this.ensureCommandsReadyDeferred();
-    await this.waitForCommandsReady();
+    await this.waitForCommandsToSettle();
     this.settleCommandsReady();
     return this.cachedCommands;
   }
@@ -2665,6 +2689,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         resolve,
         reject,
         turnId: this.activeForegroundTurnId,
+        toolCallId: params.toolCall.toolCallId,
       });
     });
 
@@ -2745,14 +2770,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
   }
 
-  // Cache an asynchronously-delivered slash-command batch and unblock any
-  // listCommands() call that is waiting on the initial batch. Used when a
-  // provider supplies an extensionCommandsParser whose result arrives after
-  // session/new (e.g. via a vendor extension notification). The ready gate is
-  // always settled — even for an empty batch — so a provider that legitimately
-  // reports no commands does not leave listCommands() blocked for the full
-  // initial-commands timeout. An optional sessionId scopes the batch to this
-  // session; notifications addressed to a different session are ignored.
+  // Cache an asynchronously-delivered slash-command batch from a provider that
+  // supplies an extensionCommandsParser (e.g. a vendor extension notification).
+  // An empty batch is the provider saying it has no commands, so it settles the
+  // waiter immediately instead of letting it wait out the quiet window. An
+  // optional sessionId scopes the batch to this session; notifications
+  // addressed to a different session are ignored.
   private applyResolvedCommands(
     commands: AgentSlashCommand[],
     options?: { sessionId?: string },
@@ -2766,7 +2789,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
 
     if (commands.length > 0) {
+      this.commandsUpdatedAt = Date.now();
       this.cachedCommands = commands;
+      // A non-empty batch may be followed by more. Let the quiet window decide
+      // when the inventory is complete rather than settling here; an empty
+      // batch is the provider saying it has nothing, which must still unblock
+      // the waiter immediately.
+      return;
     }
     this.settleCommandsReady();
   }
@@ -2889,11 +2918,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   // Loading an archived agent's history runs nothing in its working directory, which
   // may have been removed with its worktree. session/load still names the original
   // directory; only the process starts from the home directory.
-  private async resolveProcessCwd(): Promise<string> {
-    if (this.resumePurpose !== "history" || (await isDirectory(this.config.cwd))) {
-      return this.config.cwd;
-    }
-    return homedir();
+  private resolveProcessCwd(): Promise<string> {
+    return resolveResumeProcessCwd(this.config.cwd, this.resumePurpose);
   }
 
   private async spawnProcess(): Promise<SpawnedACPProcess> {
@@ -3150,13 +3176,19 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.handleUsageUpdate(update);
         return pendingUserEvents;
       case "available_commands_update":
+        this.commandsUpdatedAt = Date.now();
         this.cachedCommands = update.availableCommands.map((command) => ({
           name: command.name,
           description: command.description,
           argumentHint: command.input?.hint ?? "",
           kind: "command",
         }));
-        this.settleCommandsReady();
+        // An empty batch means the agent has no commands and would otherwise
+        // wait out the whole quiet window. A non-empty batch may be one of
+        // several, so completion belongs to the quiet window.
+        if (update.availableCommands.length === 0) {
+          this.settleCommandsReady();
+        }
         return pendingUserEvents;
       default:
         return pendingUserEvents;
@@ -3221,6 +3253,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       snapshot = this.toolSnapshotTransformer(snapshot);
     }
     this.toolCalls.set(toolCallId, snapshot);
+    if (update.status === "completed" || update.status === "failed") {
+      this.cancelPendingPermissions((pending) => pending.toolCallId === toolCallId);
+    }
     return [this.wrapTimeline(mapToolSnapshotToTimeline(snapshot, this.terminalEntries))];
   }
 
@@ -3428,11 +3463,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     event: Extract<AgentStreamEvent, { type: "turn_completed" | "turn_failed" | "turn_canceled" }>,
   ): void {
     this.deliverTranslatedEvents(this.flushPendingUserMessage());
-    // A turn that ends without completing leaves no way to answer its open
-    // permission requests, so tell the agent they were cancelled.
-    if (event.type !== "turn_completed") {
-      this.cancelPendingPermissions();
-    }
+    // Failed and canceled turns clear every request in the manager. Answer the
+    // same set here so an outside-turn request cannot keep the provider blocked.
+    this.cancelPendingPermissions(
+      (pending) => event.type !== "turn_completed" || pending.turnId === event.turnId,
+    );
     this.activeForegroundTurnId = null;
     this.fallbackAssistantMessageId = null;
     if (this.submittedUserMessageTurnId === event.turnId) {
@@ -3441,11 +3476,21 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.pushEvent(event);
   }
 
-  private cancelPendingPermissions(): void {
-    for (const pending of this.pendingPermissions.values()) {
+  private cancelPendingPermissions(
+    matches: (pending: PendingPermission) => boolean = () => true,
+  ): void {
+    for (const [requestId, pending] of this.pendingPermissions) {
+      if (!matches(pending)) continue;
+      this.pendingPermissions.delete(requestId);
       pending.resolve({ outcome: { outcome: "cancelled" } });
+      this.pushEvent({
+        type: "permission_resolved",
+        provider: this.provider,
+        requestId,
+        resolution: { behavior: "deny", message: "Permission request canceled" },
+        turnId: pending.turnId ?? undefined,
+      });
     }
-    this.pendingPermissions.clear();
   }
 
   private emitBootstrapThreadEvent(): void {
