@@ -2597,6 +2597,12 @@ export const ru: TranslationResources = {
         },
         moveUp: "Переместить вверх",
         moveDown: "Переместить вниз",
+        navLayout: {
+          title: "Макет меню",
+          description: "Как меню боковой панели помещается на невысоких экранах",
+          scroll: "Прокрутка",
+          resizable: "Изменяемый размер",
+        },
       },
       fonts: {
         title: "Шрифты",
