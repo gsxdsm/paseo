@@ -12,11 +12,16 @@ import {
   iconButtonChromeGlyphSize,
   mutedIconColorMapping,
 } from "@/components/ui/icon-button-chrome";
-import { HEADER_INNER_HEIGHT_MOBILE, HEADER_TOP_PADDING_MOBILE } from "@/constants/layout";
+import {
+  HEADER_INNER_HEIGHT,
+  HEADER_INNER_HEIGHT_MOBILE,
+  HEADER_TOP_PADDING_MOBILE,
+} from "@/constants/layout";
 import { useVerticalBarDisabled } from "@/window-layout/vertical-bar";
 import { useWindowLayout } from "@/window-layout/context";
 import { resolveHeaderBesideStatusBar } from "@/window-layout/model";
 import type { ShortcutKey } from "@/utils/format-shortcut";
+import { useTopBand } from "@/window-layout";
 
 const ThemedArrowLeft = withUnistyles(ArrowLeft);
 
@@ -44,7 +49,8 @@ interface CompactHeaderProps {
  * left-aligned between them. Neither the header nor its islands draw a background, so it reads the
  * same in flow and floating over content (see `FloatingHeaderLayout`, whose fade gives the icons
  * contrast). Its height matches the old flat header, so anything
- * offset by the header height still lines up.
+ * offset by the header height still lines up. In a window's top band it takes the top bar's
+ * place, like the full header. The column hosting it reserves any window-chrome corner it owns.
  */
 export function CompactHeader({
   navigation,
@@ -57,8 +63,9 @@ export function CompactHeader({
   strip,
 }: CompactHeaderProps) {
   const insets = useSafeAreaInsets();
+  const inTopBand = useTopBand() !== null;
   // With the vertical bar off the status bar returns to the top inset, which already clears it.
-  const topPadding = useVerticalBarDisabled() ? 0 : HEADER_TOP_PADDING_MOBILE;
+  const topPadding = useVerticalBarDisabled() || inTopBand ? 0 : HEADER_TOP_PADDING_MOBILE;
   const beside = resolveHeaderBesideStatusBar(useWindowLayout(), HEADER_INNER_HEIGHT_MOBILE);
   const rootStyle = useMemo(
     () => [
@@ -110,7 +117,7 @@ export function CompactHeader({
             </View>
           </>
         ) : (
-          <View style={styles.row}>
+          <View style={inTopBand ? styles.topBandRow : styles.row}>
             {leading}
             {titleGroup}
             {trailing}
@@ -184,6 +191,12 @@ const styles = StyleSheet.create((theme) => ({
   spacer: { flex: 1 },
   row: {
     height: HEADER_INNER_HEIGHT_MOBILE,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  topBandRow: {
+    height: HEADER_INNER_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],

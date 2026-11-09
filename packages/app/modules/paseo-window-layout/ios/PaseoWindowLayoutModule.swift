@@ -26,6 +26,7 @@ final class WindowLayoutView: ExpoView {
   private var barGuide: UILayoutGuide?
   private var barEdge = "none"
   private var bottomBarGuide: UILayoutGuide?
+  private var topBarGuide: UILayoutGuide?
   private var measuredBounds = CGRect.zero
 
   required init(appContext: AppContext? = nil) {
@@ -58,6 +59,7 @@ final class WindowLayoutView: ExpoView {
     super.didMoveToWindow()
     previousPayload = nil
     bottomBarGuide = nil
+    topBarGuide = nil
     setNeedsUpdateConstraints()
     scheduleUpdate()
   }
@@ -83,6 +85,7 @@ final class WindowLayoutView: ExpoView {
       // UIKit tracks these reads and invalidates constraints when regions change.
       divisions = reservedRegions(kind: .division).compactMap { $0.isActive ? $0.frame : nil }
       // Elements drawn over the window, such as the status bar pill with the vertical bar off.
+      // Frames already include the system's interactive margins.
       occlusions = reservedRegions(kind: .occlusion).compactMap { $0.isActive ? $0.frame : nil }
       let edge: String
       switch traitCollection.verticalBarEdge {
@@ -94,6 +97,11 @@ final class WindowLayoutView: ExpoView {
         // Where a bottom bar rests: above the home indicator, refined to the
         // screen's corners rather than the rectangular safe area.
         bottomBarGuide = layoutGuide(for: .bar(onEdge: UIRectEdge.bottom, extent: 44))
+      }
+      if topBarGuide == nil {
+        // Where a top bar rests. Beside a partial status region it can start above the
+        // rectangular safe area; content still keeps out of the occlusions.
+        topBarGuide = layoutGuide(for: .bar(onEdge: UIRectEdge.top, extent: 44))
       }
       if edge != barEdge {
         barEdge = edge
@@ -136,6 +144,10 @@ final class WindowLayoutView: ExpoView {
       // The scene reports the frame in its coordinate space, which a full-screen window shares.
       statusBarPayload = rect(convert(frame, from: window))
     }
+    var topBar: Any = NSNull()
+    if let frame = topBarGuide?.layoutFrame, frame.width > 0, frame.height > 0 {
+      topBar = rect(frame)
+    }
     let payload: [String: Any] = [
       "bounds": rect(bounds),
       "verticalBarEdge": barEdge,
@@ -143,8 +155,9 @@ final class WindowLayoutView: ExpoView {
       "verticalBarBehavior": barDisabled ? "disabled" : "automatic",
       "statusBar": statusBarPayload,
       "bottomClearance": bottomClearance,
-      "divisions": divisions.map(rect),
-      "occlusions": occlusions.map(rect)
+      "topBar": topBar,
+      "occlusions": occlusions.map(rect),
+      "divisions": divisions.map(rect)
     ]
     guard !NSDictionary(dictionary: payload).isEqual(to: previousPayload ?? [:]) else { return }
     previousPayload = payload

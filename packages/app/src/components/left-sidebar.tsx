@@ -41,7 +41,7 @@ import {
   resolveDesktopSidebarInsetLeft,
   resolveDesktopSidebarWidth,
 } from "@/components/desktop-sidebar-layout";
-import { useWindowLayout, resolveDesktopDivisionLayout } from "@/window-layout";
+import { useTopBand, useWindowLayout, resolveDesktopDivisionLayout } from "@/window-layout";
 import {
   resolveMobileSidebarPersistedWidth,
   resolveMobileSidebarWidth,
@@ -934,9 +934,11 @@ function DesktopSidebar({
     ],
     [insetsTop, insets.bottom, insets.left, overlay, divisionLayout],
   );
+  // Below the window controls' row, or in the top band's place, the first row starts flush.
+  const inTopBand = useTopBand() !== null;
   const sidebarHeaderGroupStyle = useMemo(
-    () => [styles.sidebarHeaderGroup, ownsTopLeft && styles.sidebarHeaderGroupBelowChrome],
-    [ownsTopLeft],
+    () => [styles.sidebarHeaderGroup, (ownsTopLeft || inTopBand) && styles.sidebarHeaderGroupFlush],
+    [ownsTopLeft, inTopBand],
   );
   return (
     <MobilePanelOverlay
@@ -1072,7 +1074,7 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  sidebarHeaderGroupBelowChrome: {
+  sidebarHeaderGroupFlush: {
     paddingTop: 0,
   },
   // The nav block caps at half the sidebar; a long item list scrolls inside the
