@@ -154,6 +154,8 @@ function harness() {
         openPanel() {},
         addComposerPill: () => ({ update() {}, remove() {} }),
         addHeaderButton: () => ({ update() {}, remove() {} }),
+        addComposerToolbarButton: () => ({ update() {}, remove() {} }),
+        addVerticalBarButton: () => ({ update() {}, remove() {} }),
         subscribe: () => {
           throw new Error("Subscriptions are not used here");
         },
