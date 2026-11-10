@@ -1221,6 +1221,7 @@ export const ru: TranslationResources = {
     },
     display: {
       showBackground: "Показать фоновые пространства",
+      nestSubagentWorkspaces: "Вкладывать рабочие пространства субагентов",
       trigger: "Настройки отображения",
       heading: "Отображение",
       sort: {

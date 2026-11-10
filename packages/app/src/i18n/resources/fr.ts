@@ -1233,6 +1233,7 @@ export const fr: TranslationResources = {
     },
     display: {
       showBackground: "Afficher les espaces en arrière-plan",
+      nestSubagentWorkspaces: "Imbriquer les espaces de travail des sous-agents",
       trigger: "Préférences d’affichage",
       heading: "Affichage",
       sort: {

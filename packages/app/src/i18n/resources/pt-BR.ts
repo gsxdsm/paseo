@@ -1230,6 +1230,7 @@ export const ptBR: TranslationResources = {
     },
     display: {
       showBackground: "Mostrar espaços em segundo plano",
+      nestSubagentWorkspaces: "Aninhar espaços de trabalho de subagentes",
       trigger: "Preferências de exibição",
       heading: "Exibição",
       sort: {

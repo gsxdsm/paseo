@@ -1240,6 +1240,7 @@ export const es: TranslationResources = {
     },
     display: {
       showBackground: "Mostrar espacios en segundo plano",
+      nestSubagentWorkspaces: "Anidar espacios de trabajo de subagentes",
       trigger: "Preferencias de visualización",
       heading: "Visualización",
       sort: {

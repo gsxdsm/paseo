@@ -1204,6 +1204,7 @@ export const ar: TranslationResources = {
     },
     display: {
       showBackground: "إظهار مساحات العمل في الخلفية",
+      nestSubagentWorkspaces: "تضمين مساحات عمل الوكلاء الفرعيين",
       trigger: "تفضيلات العرض",
       heading: "العرض",
       sort: {

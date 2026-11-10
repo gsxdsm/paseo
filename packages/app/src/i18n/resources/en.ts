@@ -1212,6 +1212,7 @@ export const en = {
     },
     display: {
       showBackground: "Show background",
+      nestSubagentWorkspaces: "Nest subagent workspaces",
       trigger: "Display preferences",
       heading: "Display",
       sort: {
