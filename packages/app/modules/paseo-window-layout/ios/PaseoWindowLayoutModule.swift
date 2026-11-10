@@ -147,7 +147,6 @@ final class WindowLayoutView: ExpoView {
       "verticalBarEdge": barEdge,
       "verticalBar": barPayload,
       "verticalBarBehavior": barDisabled ? "disabled" : "automatic",
-      "topBar": topBar,
       "bottomClearance": bottomClearance,
       "topBar": topBar,
       "occlusions": occlusions.map(rect),
