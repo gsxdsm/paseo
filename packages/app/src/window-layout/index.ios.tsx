@@ -1,12 +1,20 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { StyleSheet, View, type NativeSyntheticEvent, type ViewProps } from "react-native";
+import {
+  StatusBar,
+  StyleSheet,
+  View,
+  type NativeSyntheticEvent,
+  type ViewProps,
+} from "react-native";
 import { requireNativeModule, requireNativeViewManager } from "expo-modules-core";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
 import { TopBandContext, WindowLayoutContext, useWindowLayout } from "./context";
 import { resolveSafeAreaInsets, resolveTopBand, type WindowLayout } from "./model";
 import {
+  getVerticalBar,
   installVerticalBarController,
   reportVerticalBarLayout,
+  subscribeVerticalBar,
   type VerticalBarBehavior,
 } from "./vertical-bar";
 
@@ -16,7 +24,6 @@ export { WindowLayoutSurface, WindowLayoutDivisionGap } from "./surface";
 export { useStatusBarTapsReachHeader, useTopBand } from "./context";
 export {
   resolveDesktopDivisionLayout,
-  resolveHeaderBesideStatusBar,
   resolveWorkspaceActionPlacement,
   resolveWorkspaceBarActions,
 } from "./model";
@@ -41,6 +48,19 @@ const windowLayoutModule = requireNativeModule<{
   setVerticalBarBehavior?: (behavior: VerticalBarBehavior) => void;
 }>("PaseoWindowLayout");
 installVerticalBarController((behavior) => windowLayoutModule.setVerticalBarBehavior?.(behavior));
+
+/**
+ * With a folded iPhone's vertical bar off, iOS moves the status bar to a pill at the top right.
+ * The app hides it instead, so the content keeps the whole screen, and shows it again when the bar
+ * returns. Only this window turns the bar off, so other devices never reach this.
+ */
+let statusBarHidden = false;
+subscribeVerticalBar(() => {
+  const hidden = getVerticalBar().behavior === "disabled";
+  if (hidden === statusBarHidden) return;
+  statusBarHidden = hidden;
+  StatusBar.setHidden(hidden, "fade");
+});
 
 export function WindowLayoutProvider({ children }: { children: ReactNode }) {
   const [geometry, setGeometry] = useState<WindowLayout | null>(null);

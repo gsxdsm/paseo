@@ -29,7 +29,7 @@ interface CompactWorkspaceHeaderProps {
   explorerToggleLabel: string;
   explorerToggleAccessibilityState: { expanded: boolean };
   tabSwitcher: ReactNode;
-  /** Scrolling tabs for the full-width control row beside a folded iPhone's status pill. */
+  /** Scrolling tabs for the control row a folded iPhone's header gains with its vertical bar off. */
   tabStrip?: ReactNode;
   /** Workspace overflow menu. */
   children: ReactNode;

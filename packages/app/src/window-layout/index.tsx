@@ -6,7 +6,6 @@ export { WindowLayoutSurface, WindowLayoutDivisionGap } from "./surface";
 export { useStatusBarTapsReachHeader, useTopBand } from "./context";
 export {
   resolveDesktopDivisionLayout,
-  resolveHeaderBesideStatusBar,
   resolveWorkspaceActionPlacement,
   resolveWorkspaceBarActions,
 } from "./model";

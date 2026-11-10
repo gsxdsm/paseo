@@ -73,32 +73,11 @@ export function resolveSafeAreaInsets<Insets extends { top: number; bottom: numb
     : { ...systemInsets, top, bottom };
 }
 
-/** Gap between a header beside the status bar and the status bar's leading edge. */
-const STATUS_BAR_GAP = 8;
-
-/**
- * With the vertical bar off, a status bar drawn as a pill at the top right leaves the rest of the
- * top row free: the header moves into it, ending before the pill. A full-width status bar, or none,
- * keeps the header below the top inset.
- */
-export function resolveHeaderBesideStatusBar(
-  layout: WindowLayout | null,
-  rowHeight: number,
-): { top: number; right: number } | null {
-  if (!layout || layout.verticalBarBehavior !== "disabled") return null;
-  const bar = resolveTopRightPill(layout);
-  if (!bar) return null;
-  const width = layout.bounds.width;
-  return {
-    top: Math.max(0, bar.y + (bar.height - rowHeight) / 2),
-    right: Math.max(0, width - bar.x) + STATUS_BAR_GAP,
-  };
-}
-
 /**
  * Whether iOS reads a tap on the compact header as a status bar tap, which scrolls the window's
- * scroll-to-top view to its start. That happens on a folded iPhone: beside its vertical bar, in a
- * top band, and with the bar off, beside the status pill. Opening the sidebar there scrolled the chat.
+ * scroll-to-top view to its start. That happens on a folded iPhone: beside its vertical bar and in
+ * a top band. Opening the sidebar there scrolled the chat. With the bar off the app hides the
+ * status bar, so no tap reaches it.
  */
 export function resolveStatusBarTapsReachHeader(
   layout: WindowLayout | null,
@@ -106,33 +85,7 @@ export function resolveStatusBarTapsReachHeader(
 ): boolean {
   if (topBand !== null) return true;
   if (!layout) return false;
-  return layout.verticalBarEdge !== "none" || resolveHeaderBesideStatusBar(layout, 0) !== null;
-}
-
-/** Below this much of the window's height, an element counts as part of the top row. */
-const TOP_ROW_LIMIT = 120;
-
-function isTopRightPill(frame: WindowLayoutRect, width: number): boolean {
-  return (
-    frame.width > 0 && frame.width < width * 0.6 && frame.x >= width / 2 && frame.y < TOP_ROW_LIMIT
-  );
-}
-
-/**
- * The status pill at the top right: the occluded region UIKit reports there, else a status bar
- * frame that is itself a pill. iOS can report the status bar as a full-width strip.
- */
-function resolveTopRightPill(layout: WindowLayout): WindowLayoutRect | null {
-  const width = layout.bounds.width;
-  const pills = (layout.occlusions ?? []).filter((frame) => isTopRightPill(frame, width));
-  if (pills.length > 0) {
-    const x = Math.min(...pills.map((frame) => frame.x));
-    const y = Math.min(...pills.map((frame) => frame.y));
-    const maxY = Math.max(...pills.map((frame) => frame.y + frame.height));
-    return { x, y, width: width - x, height: maxY - y };
-  }
-  const bar = layout.statusBar;
-  return bar && isTopRightPill(bar, width) ? bar : null;
+  return layout.verticalBarEdge !== "none";
 }
 
 export interface DesktopDivisionLayout {

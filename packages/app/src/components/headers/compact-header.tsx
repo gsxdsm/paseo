@@ -18,8 +18,6 @@ import {
   HEADER_TOP_PADDING_MOBILE,
 } from "@/constants/layout";
 import { useVerticalBarDisabled } from "@/window-layout/vertical-bar";
-import { useWindowLayout } from "@/window-layout/context";
-import { resolveHeaderBesideStatusBar } from "@/window-layout/model";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useTopBand } from "@/window-layout";
 
@@ -40,7 +38,7 @@ interface CompactHeaderProps {
   loading?: boolean;
   /** Icon actions inherit the island chrome through the shared button primitives. */
   actions?: ReactNode;
-  /** Fills the control row when the header splits beside the status pill, e.g. a tab strip. */
+  /** Fills the control row when the header splits with the vertical bar off, e.g. a tab strip. */
   strip?: ReactNode;
 }
 
@@ -64,27 +62,16 @@ export function CompactHeader({
 }: CompactHeaderProps) {
   const insets = useSafeAreaInsets();
   const inTopBand = useTopBand() !== null;
-  // With the vertical bar off the status bar returns to the top inset, which already clears it.
-  const topPadding = useVerticalBarDisabled() || inTopBand ? 0 : HEADER_TOP_PADDING_MOBILE;
-  const beside = resolveHeaderBesideStatusBar(useWindowLayout(), HEADER_INNER_HEIGHT_MOBILE);
+  const topPadding = inTopBand ? 0 : HEADER_TOP_PADDING_MOBILE;
+  // With a folded iPhone's vertical bar off the app hides the status bar, leaving the full width:
+  // the top row holds the title alone and the buttons take the next line.
+  const split = useVerticalBarDisabled();
   const rootStyle = useMemo(
     () => [
       styles.root,
-      {
-        paddingTop: beside ? beside.top : insets.top + topPadding,
-        marginLeft: insets.left,
-        marginRight: insets.right,
-      },
+      { paddingTop: insets.top + topPadding, marginLeft: insets.left, marginRight: insets.right },
     ],
-    [beside, insets.top, insets.left, insets.right, topPadding],
-  );
-  // Beside the status pill the top row holds the title alone; the buttons take the next line.
-  const titleRowStyle = useMemo(
-    () => [
-      styles.row,
-      beside && { marginRight: Math.max(0, beside.right - insets.right - ROOT_PADDING) },
-    ],
-    [beside, insets.right],
+    [insets.top, insets.left, insets.right, topPadding],
   );
 
   const leading = (
@@ -107,9 +94,9 @@ export function CompactHeader({
   return (
     <IconButtonChromeProvider value="header-island">
       <View style={rootStyle}>
-        {beside ? (
+        {split ? (
           <>
-            <View style={titleRowStyle}>{titleGroup}</View>
+            <View style={styles.row}>{titleGroup}</View>
             <View style={styles.row}>
               {leading}
               {strip ?? <View style={styles.spacer} />}
