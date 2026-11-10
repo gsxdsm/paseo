@@ -18,6 +18,7 @@ export {
   resolveDesktopDivisionLayout,
   resolveHeaderBesideStatusBar,
   resolveWorkspaceActionPlacement,
+  resolveTopTrailingOcclusionClearance,
   resolveWorkspaceBarActions,
 } from "./model";
 export type { DesktopDivisionLayout, TopBand, WindowLayout, WindowLayoutRect } from "./model";

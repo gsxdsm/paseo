@@ -84,7 +84,10 @@ export function resolveStatusBarTapsReachHeader(
 ): boolean {
   if (topBand !== null) return true;
   if (!layout) return false;
-  return layout.verticalBarEdge !== "none" || resolveHeaderBesideStatusBar({ layout, topBand, rowHeight: 0 }) !== null;
+  return (
+    layout.verticalBarEdge !== "none" ||
+    resolveHeaderBesideStatusBar({ layout, topBand, rowHeight: 0 }) !== null
+  );
 }
 
 /** Below this much of the window's height, an occlusion counts as part of the top row. */
@@ -121,6 +124,26 @@ export function resolveHeaderBesideStatusBar(input: {
     top: Math.max(0, y + (maxY - y - rowHeight) / 2),
     right: Math.max(0, width - x) + STATUS_BAR_GAP,
   };
+}
+
+/**
+ * Where a full-window overlay's top-trailing controls start so they clear the system's
+ * occlusions there, such as the front camera on a folded iPhone Duo. A modal window's
+ * rectangular safe area leaves those out. Zero where nothing occludes the top-trailing corner.
+ */
+export function resolveTopTrailingOcclusionClearance(layout: WindowLayout | null): number {
+  if (!layout) return 0;
+  const { width, height } = layout.bounds;
+  const bottoms = (layout.occlusions ?? [])
+    .filter(
+      (frame) =>
+        frame.width > 0 &&
+        frame.height > 0 &&
+        frame.y < height / 4 &&
+        frame.x + frame.width > width / 2,
+    )
+    .map((frame) => frame.y + frame.height);
+  return bottoms.length === 0 ? 0 : Math.ceil(Math.max(...bottoms));
 }
 
 export interface DesktopDivisionLayout {
