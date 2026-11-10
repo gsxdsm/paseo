@@ -13,7 +13,7 @@ import {
 export { useWindowLayout } from "./context";
 export { WindowLayoutActions, WindowLayoutActionsHost } from "./actions";
 export { WindowLayoutSurface, WindowLayoutDivisionGap } from "./surface";
-export { useTopBand } from "./context";
+export { useStatusBarTapsReachHeader, useTopBand } from "./context";
 export {
   resolveDesktopDivisionLayout,
   resolveHeaderBesideStatusBar,

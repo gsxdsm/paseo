@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveHeaderBesideStatusBar,
   resolveSafeAreaInsets,
+  resolveStatusBarTapsReachHeader,
   resolveTopBand,
   type WindowLayout,
   type WindowLayoutRect,
@@ -206,5 +207,46 @@ describe("resolveHeaderBesideStatusBar", () => {
       ),
     ).toBeNull();
     expect(resolveHeaderBesideStatusBar(null, 44)).toBeNull();
+  });
+});
+
+describe("resolveStatusBarTapsReachHeader", () => {
+  it("is true beside a folded iPhone's vertical bar, as measured on the iPhone Duo", () => {
+    expect(
+      resolveStatusBarTapsReachHeader(
+        layout({
+          bounds: { x: 0, y: 0, width: 466, height: 1000 },
+          verticalBarEdge: "trailing",
+          verticalBar: { x: 382, y: 0, width: 84, height: 1000 },
+          statusBar: { x: 0, y: 0, width: 466, height: 2 },
+        }),
+        null,
+      ),
+    ).toBe(true);
+  });
+
+  it("is true in a top band and beside the status pill with the vertical bar off", () => {
+    expect(resolveStatusBarTapsReachHeader(layout(), { top: 20, trailingObstruction: null })).toBe(
+      true,
+    );
+    expect(
+      resolveStatusBarTapsReachHeader(
+        layout({
+          verticalBarBehavior: "disabled",
+          statusBar: { x: 280, y: 25, width: 102, height: 46 },
+        }),
+        null,
+      ),
+    ).toBe(true);
+  });
+
+  it("is false below an ordinary status bar", () => {
+    expect(
+      resolveStatusBarTapsReachHeader(
+        layout({ statusBar: { x: 0, y: 0, width: 402, height: 62 } }),
+        null,
+      ),
+    ).toBe(false);
+    expect(resolveStatusBarTapsReachHeader(null, null)).toBe(false);
   });
 });

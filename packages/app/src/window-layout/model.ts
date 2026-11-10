@@ -95,6 +95,20 @@ export function resolveHeaderBesideStatusBar(
   };
 }
 
+/**
+ * Whether iOS reads a tap on the compact header as a status bar tap, which scrolls the window's
+ * scroll-to-top view to its start. That happens on a folded iPhone: beside its vertical bar, in a
+ * top band, and with the bar off, beside the status pill. Opening the sidebar there scrolled the chat.
+ */
+export function resolveStatusBarTapsReachHeader(
+  layout: WindowLayout | null,
+  topBand: TopBand | null,
+): boolean {
+  if (topBand !== null) return true;
+  if (!layout) return false;
+  return layout.verticalBarEdge !== "none" || resolveHeaderBesideStatusBar(layout, 0) !== null;
+}
+
 /** Below this much of the window's height, an element counts as part of the top row. */
 const TOP_ROW_LIMIT = 120;
 
