@@ -716,10 +716,11 @@ function MobileSidebar({
         })
         .onEnd(() => {
           const width = resizeWidth.value;
-          // A release inside the full-width snap stores null again, so the width
-          // effect does not run. Restore the visible width on the gesture thread.
+          // A near-full release stores null. When that null is already stored, nothing else
+          // moves the shared width off the size the finger let go of.
+          const persisted = resolveMobileSidebarPersistedWidth({ width, windowWidth });
           resizeWidth.value = resolveMobileSidebarWidth({
-            requestedWidth: resolveMobileSidebarPersistedWidth({ width, windowWidth }),
+            requestedWidth: persisted,
             windowWidth,
           });
           scheduleOnRN(commitWidth, width);

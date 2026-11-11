@@ -1286,6 +1286,11 @@ export const ja: TranslationResources = {
       closeSidebar: "サイドバーを閉じる",
       moreActions: "その他のアクション",
     },
+    nav: {
+      more: "その他",
+      moreItems: "その他のメニュー項目",
+      resize: "メニューのサイズを変更",
+    },
     footer: {
       usage: "使用状況",
     },

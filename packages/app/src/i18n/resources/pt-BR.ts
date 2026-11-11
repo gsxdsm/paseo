@@ -1298,6 +1298,11 @@ export const ptBR: TranslationResources = {
       closeSidebar: "Fechar barra lateral",
       moreActions: "Mais ações",
     },
+    nav: {
+      more: "Mais",
+      moreItems: "Mais itens do menu",
+      resize: "Redimensionar o menu",
+    },
     footer: {
       usage: "Uso",
     },

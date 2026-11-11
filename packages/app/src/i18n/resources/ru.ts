@@ -1290,6 +1290,11 @@ export const ru: TranslationResources = {
       closeSidebar: "Закрыть боковую панель",
       moreActions: "Дополнительные действия",
     },
+    nav: {
+      more: "Ещё",
+      moreItems: "Другие пункты меню",
+      resize: "Изменить размер меню",
+    },
     footer: {
       usage: "Использование",
     },
